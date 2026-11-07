@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="필기보드">
+<title>필기보드</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#080d16;color:#fff;font-family:-apple-system,BlinkMacSystemFont,sans-serif}
+#bar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:8px;background:#1d293b;min-height:58px}
+button,label,select{border:1px solid #53627a;background:#2b3a52;color:white;border-radius:9px;padding:9px 11px;font-size:14px;font-weight:600}
+button.on{background:#e5edff;color:#172033}.brand{font-weight:800;margin:0 7px}.file input{display:none}
+#palette{display:flex;align-items:center;gap:5px;padding:3px 5px;border-radius:10px;background:#111b2b}
+.swatch{width:25px;height:25px;padding:0;border:2px solid #ffffff70;border-radius:50%;min-width:25px}
+.swatch.selected{outline:2px solid white;outline-offset:2px}
+#weight{min-width:100px}#shape{min-width:142px}
+#stage{height:calc(100dvh - 92px);width:100vw;display:flex;align-items:center;justify-content:center;padding:0;background:#080d16}
+#board{position:relative;width:min(100vw,calc((100dvh - 92px)*16/9));height:min(calc(100dvh - 92px),56.25vw);background:white;overflow:hidden;box-shadow:0 10px 35px #0008;touch-action:none}
+canvas{position:absolute;inset:0;width:100%;height:100%}#ink{touch-action:none}
+#cursor{position:absolute;z-index:5;left:0;top:0;width:30px;height:30px;pointer-events:none;opacity:0;transform:translate(-5px,-5px) rotate(-42deg);transition:opacity .12s}
+#cursor:before{content:"";position:absolute;left:10px;top:1px;width:9px;height:23px;border-radius:5px 5px 2px 2px;background:#171717;border:1.5px solid white;box-shadow:0 0 5px #000}
+#cursor:after{content:"";position:absolute;left:12px;top:22px;width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:8px solid #171717;filter:drop-shadow(0 0 1px white)}
+#cursor.show{opacity:1}
+#msg{height:34px;padding:8px 12px;background:#1d293b;color:#bac7d9;font-size:12px}
+body.full #bar,body.full #msg{display:none}
+body.full #stage{height:100dvh;width:100vw;padding:0}
+body.full #board{width:100vw;height:100dvh;max-width:none;max-height:none;aspect-ratio:auto;box-shadow:none}
+body.full #cursor{display:none}
+@media(max-width:760px){#bar{gap:5px;padding:6px}button,label,select{padding:7px 8px;font-size:12px}.brand{font-size:13px;margin:0 2px}.swatch{width:22px;height:22px;min-width:22px}#palette{gap:4px}#stage{height:calc(100dvh - 138px)}#board{width:min(100vw,calc((100dvh - 138px)*16/9));height:min(calc(100dvh - 138px),56.25vw)}#msg{height:26px;padding:5px 8px}}
+</style>
+</head>
+<body>
+<div id="bar">
+<span class="brand">필기보드</span>
+<label class="file">이미지 열기<input id="file" type="file" accept="image/*"></label>
+<button class="on" data-mode="pen">펜</button><button data-mode="marker">형광펜</button><button data-mode="erase">지우개</button><button data-mode="pointer">포인터</button>
+<select id="shape" aria-label="도형 그리기">
+<option value="free" selected>도형: 자유그리기</option>
+<option value="line">직선</option><option value="arrow">화살표</option>
+<option value="rect">사각형</option><option value="ellipse">타원·원</option><option value="triangle">삼각형</option>
+</select>
+<div id="palette" aria-label="무지개 색상 선택">
+<button class="swatch selected" data-color="#ff0000" style="background:#ff0000" title="빨강"></button>
+<button class="swatch" data-color="#ff8c00" style="background:#ff8c00" title="주황"></button>
+<button class="swatch" data-color="#ffd900" style="background:#ffd900" title="노랑"></button>
+<button class="swatch" data-color="#16a34a" style="background:#16a34a" title="초록"></button>
+<button class="swatch" data-color="#1677ff" style="background:#1677ff" title="파랑"></button>
+<button class="swatch" data-color="#243b9b" style="background:#243b9b" title="남색"></button>
+<button class="swatch" data-color="#8b35c9" style="background:#8b35c9" title="보라"></button>
+</div>
+<select id="weight" aria-label="굵기">
+<option value="0.5">매우 가늘게</option><option value="1">가늘게</option><option value="1.5">얇게</option><option value="2">조금 얇게</option><option value="4" selected>보통</option><option value="8">굵게</option><option value="14">아주 굵게</option>
+<option value="24">매우 굵게</option><option value="40">굵기 40</option><option value="64">굵기 64</option><option value="96">굵기 96</option>
+</select>
+<button id="undo">취소</button><button id="redo">다시</button><button id="clear">전체 지우기</button><button id="save">이미지 저장</button><button id="full">작업영역 전체화면</button>
+</div>
+<div id="stage"><div id="board"><canvas id="background"></canvas><canvas id="ink"></canvas><div id="cursor"></div></div></div>
+<div id="msg">도형 메뉴에서 직선·화살표·사각형·원·삼각형을 선택할 수 있습니다. 자유그리기는 잠시 멈추면 직선 또는 매끄러운 곡선으로 다듬습니다.</div>
+<script>
+(()=> {
+const board=document.querySelector('#board'),bg=document.querySelector('#background'),ink=document.querySelector('#ink'),cursor=document.querySelector('#cursor');
+const b=bg.getContext('2d'),c=ink.getContext('2d'),msg=document.querySelector('#msg');
+let mode='pen',color='#ff0000',weight=4,strokes=[],redo=[],active=null,bgImg=null,cursorTimer=null,pointerTrail=[],pointerFrame=0;
+function resize(){
+ const r=board.getBoundingClientRect(),d=Math.max(1,window.devicePixelRatio||1);
+ [bg,ink].forEach(x=>{x.width=Math.max(1,Math.round(r.width*d));x.height=Math.max(1,Math.round(r.height*d))});
+ b.setTransform(bg.width/r.width,0,0,bg.height/r.height,0,0);
+ c.setTransform(ink.width/r.width,0,0,ink.height/r.height,0,0);
+ drawBg();draw();
+}
+function drawBg(){
+ const r=board.getBoundingClientRect();b.clearRect(0,0,r.width,r.height);b.fillStyle='#fff';b.fillRect(0,0,r.width,r.height);
+ if(bgImg){let s=Math.min(r.width/bgImg.width,r.height/bgImg.height),w=bgImg.width*s,h=bgImg.height*s;b.drawImage(bgImg,(r.width-w)/2,(r.height-h)/2,w,h)}
+}
+function paint(s){
+ if(!s||!s.pts.length)return;
+ c.save();c.lineCap='round';c.lineJoin='round';
+ c.globalCompositeOperation=s.mode==='erase'?'destination-out':'source-over';
+ c.strokeStyle=s.color;c.globalAlpha=s.mode==='marker'?.28:1;
+ c.lineWidth=s.mode==='marker'?s.weight*3:s.weight;
+ c.beginPath();c.moveTo(s.pts[0].x*board.clientWidth,s.pts[0].y*board.clientHeight);
+ for(const p of s.pts.slice(1))c.lineTo(p.x*board.clientWidth,p.y*board.clientHeight);
+ if(s.pts.length===1){c.lineTo(s.pts[0].x*board.clientWidth+.1,s.pts[0].y*board.clientHeight+.1)}
+ c.stroke();c.restore();
+}
+function draw(){
+ c.clearRect(0,0,board.clientWidth,board.clientHeight);
+ strokes.forEach(paint);
+ if(active&&active.mode!=='pointer')paint(active);
+ // 포인터 자취는 별도 임시 레이어로 그려지며 저장되는 필기가 아닙니다.
+ const now=performance.now();
+ pointerTrail=pointerTrail.filter(t=>now-t.time<1250);
+ for(const t of pointerTrail){
+   const age=(now-t.time)/1250,pts=t.pts;
+   if(pts.length<2)continue;
+   c.save();c.globalAlpha=Math.max(0,1-age);c.strokeStyle='#171717';c.lineWidth=3;
+   c.lineCap='round';c.lineJoin='round';c.shadowColor='#171717';c.shadowBlur=5;
+   c.beginPath();c.moveTo(pts[0].x*board.clientWidth,pts[0].y*board.clientHeight);
+   for(const q of pts.slice(1))c.lineTo(q.x*board.clientWidth,q.y*board.clientHeight);
+   c.stroke();c.restore();
+ }
+ if(pointerTrail.length){
+   if(!pointerFrame)pointerFrame=requestAnimationFrame(()=>{pointerFrame=0;draw()});
+ }
+}
+function point(e){const r=ink.getBoundingClientRect();return{x:(e.clientX-r.left)/r.width,y:(e.clientY-r.top)/r.height}}
+function dist(a,b){return Math.hypot((a.x-b.x)*board.clientWidth,(a.y-b.y)*board.clientHeight)}
+function makeShape(kind,a,z){
+ const dx=z.x-a.x,dy=z.y-a.y;
+ if(kind==='line')return [a,z];
+ if(kind==='arrow'){
+   const len=Math.hypot(dx,dy)||1,ux=dx/len,uy=dy/len,head=Math.min(.035,len*.22);
+   const base={x:z.x-ux*head,y:z.y-uy*head},perp={x:-uy*head*.55,y:ux*head*.55};
+   return [a,z,{x:base.x+perp.x,y:base.y+perp.y},z,{x:base.x-perp.x,y:base.y-perp.y}];
+ }
+ if(kind==='rect')return [a,{x:z.x,y:a.y},z,{x:a.x,y:z.y},a];
+ if(kind==='ellipse'){
+   const cx=(a.x+z.x)/2,cy=(a.y+z.y)/2,rx=Math.abs(dx)/2,ry=Math.abs(dy)/2,pts=[];
+   for(let i=0;i<=48;i++){const t=i*Math.PI*2/48;pts.push({x:cx+Math.cos(t)*rx,y:cy+Math.sin(t)*ry})}
+   return pts;
+ }
+ if(kind==='triangle')return [ {x:(a.x+z.x)/2,y:a.y}, {x:z.x,y:z.y}, {x:a.x,y:z.y}, {x:(a.x+z.x)/2,y:a.y} ];
+ return [a,z];
+}
+function smoothCurve(points){
+ if(points.length<4)return points;
+ // Catmull-Rom 곡선을 촘촘한 점으로 변환해 자연스럽게 연결합니다.
+ const out=[points[0]];
+ for(let i=0;i<points.length-1;i++){
+   const p0=points[Math.max(0,i-1)],p1=points[i],p2=points[i+1],p3=points[Math.min(points.length-1,i+2)];
+   const steps=Math.max(3,Math.min(12,Math.ceil(dist(p1,p2)/7)));
+   for(let j=1;j<=steps;j++){
+     const t=j/steps,t2=t*t,t3=t2*t;
+     const x=.5*((2*p1.x)+(-p0.x+p2.x)*t+(2*p0.x-5*p1.x+4*p2.x-p3.x)*t2+(-p0.x+3*p1.x-3*p2.x+p3.x)*t3);
+     const y=.5*((2*p1.y)+(-p0.y+p2.y)*t+(2*p0.y-5*p1.y+4*p2.y-p3.y)*t2+(-p0.y+3*p1.y-3*p2.y+p3.y)*t3);
+     out.push({x,y});
+   }
+ }
+ return out;
+}
+function straightenIfLine(s){
+ const pts=s.pts;if(pts.length<3)return false;
+ const first=pts[0],last=pts[pts.length-1],length=dist(first,last);
+ if(length<18)return false;
+ let maxDev=0,path=0;
+ for(let i=1;i<pts.length;i++)path+=dist(pts[i-1],pts[i]);
+ for(const q of pts){
+   const vx=(last.x-first.x)*board.clientWidth,vy=(last.y-first.y)*board.clientHeight;
+   const wx=(q.x-first.x)*board.clientWidth,wy=(q.y-first.y)*board.clientHeight;
+   const dev=Math.abs(vx*wy-vy*wx)/(length||1);maxDev=Math.max(maxDev,dev);
+ }
+ if(maxDev<Math.max(5,length*.035)&&path/length<1.14){
+   s.pts=[first,last];return true;
+ }
+ return false;
+}
+function scheduleStrokePolish(stroke){
+ if(stroke.mode==='erase'||stroke.mode==='pointer')return;
+ setTimeout(()=>{
+   if(!strokes.includes(stroke))return;
+   const changed=straightenIfLine(stroke);
+   if(!changed)stroke.pts=smoothCurve(stroke.pts);
+   draw();persist();
+ },650);
+}
+
+function showCursor(e){
+ const r=board.getBoundingClientRect();
+ cursor.style.left=(e.clientX-r.left)+'px';cursor.style.top=(e.clientY-r.top)+'px';
+ cursor.classList.add('show');clearTimeout(cursorTimer);
+ if(!active)cursorTimer=setTimeout(()=>cursor.classList.remove('show'),900);
+}
+ink.addEventListener('pointerdown',e=>{
+ showCursor(e);ink.setPointerCapture(e.pointerId);
+ const p0=point(e);
+ if(mode==='pointer'){active={mode:'pointer',pts:[p0]};pointerTrail.push({time:performance.now(),pts:active.pts});draw();return}
+ redo=[];
+ active={mode,color,weight,shape:document.querySelector('#shape').value,start:p0,pts:[p0]};
+ draw();
+});
+ink.addEventListener('pointermove',e=>{
+ showCursor(e);if(!active)return;
+ const p=point(e);
+ if(active.mode==='pointer'){
+   active.pts.push(p);
+   const last=pointerTrail[pointerTrail.length-1];if(last)last.pts=active.pts;
+ }else if(active.shape!=='free'){
+   active.end=p;active.pts=makeShape(active.shape,active.start,p);
+ }else active.pts.push(p);
+ draw();
+});
+function persist(){try{localStorage.setItem('boardmirror_strokes',JSON.stringify(strokes))}catch(e){msg.textContent='자동 저장 공간이 부족합니다. 이미지로 저장해 주세요.'}}
+function finish(){
+ if(!active)return;
+ if(active.mode!=='pointer'){
+   const done=active;
+   if(done.shape!=='free'&&done.end)done.pts=makeShape(done.shape,done.start,done.end);
+   strokes.push(done);persist();
+   if(done.shape==='free'&&(done.mode==='pen'||done.mode==='marker'))scheduleStrokePolish(done);
+ }
+ active=null;draw();
+}
+ink.addEventListener('pointerup',e=>{finish();showCursor(e)});
+ink.addEventListener('pointercancel',e=>{finish();showCursor(e)});
+document.querySelectorAll('[data-mode]').forEach(x=>x.onclick=()=>{
+ mode=x.dataset.mode;document.querySelectorAll('[data-mode]').forEach(y=>y.classList.toggle('on',x===y));
+ document.querySelector('#weight').value=String(weight);
+ msg.textContent=mode==='erase'?'지우개 굵기를 최대 96까지 조절할 수 있습니다.':
+ mode==='pointer'?'검은색 펜 모양 포인터입니다. 움직인 자취가 잠시 나타났다가 사라지며 필기에는 저장되지 않습니다.':
+ mode==='marker'?'형광펜 색상을 아래 무지개 버튼에서 선택하세요.':'펜 색상을 아래 무지개 버튼에서 선택하세요. 직선·곡선을 그린 뒤 잠시 멈추면 자동으로 다듬습니다.';
+});
+document.querySelectorAll('.swatch').forEach(x=>x.onclick=()=>{
+ color=x.dataset.color;document.querySelectorAll('.swatch').forEach(y=>y.classList.toggle('selected',x===y));
+});
+document.querySelector('#weight').onchange=e=>{weight=+e.target.value};
+document.querySelector('#undo').onclick=()=>{if(strokes.length){redo.push(strokes.pop());draw();persist()}};
+document.querySelector('#redo').onclick=()=>{if(redo.length){strokes.push(redo.pop());draw();persist()}};
+document.querySelector('#clear').onclick=()=>{if(confirm('현재 필기를 모두 지울까요?')){strokes=[];redo=[];draw();persist()}};
+document.querySelector('#full').onclick=async()=>{
+ document.body.classList.toggle('full');
+ if(document.body.classList.contains('full')&&document.documentElement.requestFullscreen){try{await document.documentElement.requestFullscreen()}catch(e){}}
+ else if(document.fullscreenElement){try{await document.exitFullscreen()}catch(e){}}
+ setTimeout(resize,250);
+};
+document.querySelector('#file').onchange=e=>{
+ const f=e.target.files[0];if(!f)return;
+ if(!f.type.startsWith('image/')){msg.textContent='현재 버전은 이미지 배경을 지원합니다. PDF 열기 기능은 아직 추가되지 않았습니다.';return}
+ const u=URL.createObjectURL(f),im=new Image();im.onload=()=>{bgImg=im;drawBg();URL.revokeObjectURL(u);msg.textContent=f.name+' 불러오기 완료'};im.src=u;
+};
+document.querySelector('#save').onclick=()=>{
+ const out=document.createElement('canvas');out.width=bg.width;out.height=bg.height;
+ const x=out.getContext('2d');x.drawImage(bg,0,0);x.drawImage(ink,0,0);
+ const a=document.createElement('a');a.href=out.toDataURL('image/png');a.download='필기보드.png';a.click();msg.textContent='현재 작업영역을 원본 해상도로 저장했습니다.';
+};
+try{const old=JSON.parse(localStorage.getItem('boardmirror_strokes')||'[]');if(Array.isArray(old))strokes=old}catch(e){}
+window.addEventListener('resize',resize);document.addEventListener('fullscreenchange',()=>setTimeout(resize,100));resize();
+})();
+</script>
+</body></html>
